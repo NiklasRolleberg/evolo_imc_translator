@@ -3,9 +3,10 @@
 #!/usr/bin/python3
 import rclpy
 from rclpy.node import Node
-from imc_ros_bridge.msg import EstimatedState, DesiredHeading, DesiredSpeed
+from imc_ros_bridge.msg import EstimatedState, DesiredHeading, DesiredSpeed, SonarData
 from std_msgs.msg import Float32
 from smarc_msgs.msg import Topics as smarcTopics
+from smarc_msgs.msg import Sidescan
 from nav_msgs.msg import Odometry
 from geographic_msgs.msg import GeoPoint
 from tf_transformations import euler_from_quaternion
@@ -27,6 +28,11 @@ class Translator:
         self.ros_subsciber_Odom = self._node.create_subscription(Odometry,smarcTopics.ODOM_TOPIC , self.odom_callback,10)
         self.ros_subsciber_Latlon = self._node.create_subscription(GeoPoint,smarcTopics.POS_LATLON_TOPIC, self.latlon_callback,10)
         self.ros_publisher_EstimatedState = self._node.create_publisher(EstimatedState, "imc/out/estimatedstate", 10)
+
+        #Sonardata (ROS -> IMC)
+        self.ros_subsciber_Sidescan = self._node.create_subscription(Sidescan, "/payload/sidescan", self.sideScan_callback, 10)
+        #self.ros_subsciber_Sidescan = self._node.create_publisher(Sidescan, "sensors/sidescan", 10)
+        self.ros_publisher_SonarData = self._node.create_publisher(SonarData, "imc/out/sonardata", 10)
 
         #TODO ControlLoops
 
@@ -87,7 +93,6 @@ class Translator:
         while(yaw_msg.data > 0): yaw_msg.data -= 2* math.pi
         self.ros_publisher_DesiredHeading_enu.publish(yaw_msg)
         
-
     def desiredSpeed_callback(self, msg : DesiredSpeed):
         speed_msg = Float32()
         if(msg.speed_units == msg.SUNITS_METERS_PS):
@@ -95,6 +100,18 @@ class Translator:
             self.ros_publisher_DesiredSpeed.publish(speed_msg)
         else:
             self._node.get_logger().error("Error unknown speed unit")
+
+    def sideScan_callback(self, msg: Sidescan):
+        sonardata_msg = SonarData()
+        sonardata_msg.max_range = 100 #int(msg.max_duration * 1500.0)
+        sonardata_msg.min_range = 0
+        sonardata_msg.frequency = 200000
+        sonardata_msg.bits_per_point = 8
+        sonardata_msg.scale_factor = 1.0
+        sonardata_msg.type = SonarData.ST_SIDESCAN
+        sonardata_msg.data = msg.port_channel[::-1] + msg.starboard_channel
+        
+        self.ros_publisher_SonarData.publish(sonardata_msg)
 
 def main(args=None, namespace=None):
     rclpy.init(args=args)
